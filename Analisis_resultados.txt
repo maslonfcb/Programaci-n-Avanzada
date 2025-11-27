@@ -1,0 +1,85 @@
+Explicación detallada de los resultados entregados
+
+
+SkipList
+
+Tiempo total concurrente: 130.2564 s
+
+Tiempo acumulado en inserciones: 0.8718 s
+
+Tiempo acumulado en búsquedas: 75.2432 s
+
+AVL
+
+Tiempo total concurrente: 70.7164 s
+
+Tiempo acumulado en inserciones: 23.1534 s
+
+Tiempo acumulado en búsquedas: 26.4133 s
+
+
+1) Cálculos rápidos (promedios por operación)
+
+Se hicieron 1,000,000 inserciones por estructura y 10 búsquedas por inserción (esto es lo que el worker hacía: por cada x insertado hace 10 búsquedas), entonces:
+
+Total de búsquedas por estructura = 10,000,000 (10M).
+
+Total de inserciones = 1,000,000.
+
+Promedios:
+
+SkipList
+
+Inserción promedio = 0.8718 s / 1,000,000 = 0.8718 µs ≈ 0.87 µs por inserción.
+
+Búsqueda promedio = 75.2432 s / 10,000,000 = 7.524 µs por búsqueda.
+
+AVL
+
+Inserción promedio = 23.1534 s / 1,000,000 = 23.153 µs por inserción.
+
+Búsqueda promedio = 26.4133 s / 10,000,000 = 2.641 µs por búsqueda.
+
+Ratios:
+
+Inserción: AVL es ~26.6× más lento que SkipList por inserción (23.15 / 0.8718 ≈ 26.56).
+
+Búsqueda: SkipList es ~2.85× más lento en búsquedas que AVL (7.524 / 2.641 ≈ 2.85).
+
+Wall time total: SkipList tardó ~1.84× más en wall-clock que AVL (130.26 / 70.72 ≈ 1.84).
+
+2) Interpretación — por qué sucede esto (explicación técnica)
+
+No hay error en los números; son consecuencia del diseño del benchmark y de las características de Python. He aquí las causas principales.
+
+A. Diferente trabajo contabilizado en insert() para cada estructura
+
+SkipList.insert() en esta versión mide solo la sección donde se actualizan punteros (las asignaciones update[i].forward[i] = new_node) bajo un insert_lock. 
+Esa sección es extremadamente corta: unas pocas asignaciones en Python. Por eso el tiempo acumulado de inserciones para SkipList es muy pequeño (0.87 s total).
+
+AVL.insert() está midiendo la inserción completa con rotaciones, recursión y el lock global. Eso es mucho más trabajo por inserción (mantenimiento de alturas, posibles rotaciones), 
+por tanto el tiempo por inserción es mayor (23 s total).
+
+Conclusión A: las inserciones no son medidas exactamente con la misma granularidad: SkipList reporta solo la parte mínima crítica; AVL reporta la operación completa. 
+Esa diferencia explica la enorme discrepancia en "suma tiempos inserción".
+
+B. Búsqueda: costo por operación y estructura de datos
+
+AVL: la búsqueda recorre a lo sumo la altura del árbol (~log₂(1e6) ≈ 20–21). Eso significa ~20 comparaciones y movimientos de puntero por búsqueda — relativamente barato en Python.
+
+SkipList: la búsqueda realiza un recorrido desde los niveles altos hacia abajo, ejecutando bucles while en cada nivel. En implementación Python, cada iteración implica varias operaciones 
+a nivel de intérprete (acceso a listas, comparaciones, salto de bucle). Esto genera más overhead por búsqueda que un simple descenso por punteros en un árbol bien balanceado. 
+El resultado: cada búsqueda en SkipList cuesta más tiempo en Python, a pesar de la misma complejidad asintótica.
+
+Conclusión B: SkipList paga un mayor coste constante por búsqueda en Python (más punteros/lista acceso, loops anidados), por eso sus búsquedas totales suman mucho (75 s).
+
+C. Wall-clock total: por qué SkipList es más lento globalmente
+
+El wall time está dominado por las búsquedas: en tu experimento hubo 10M búsquedas; en SkipList cada una costó ~7.5 µs, en AVL ~2.64 µs. 
+Esa diferencia se tradujo en un gran impacto acumulado: SkipList buscó mucho más tiempo y por eso el wall time total fue mayor (130 s vs 70 s).
+
+Aunque SkipList tiene inserciones locales muy rápidas, las búsquedas son la parte dominante y la que acabó definiendo el rendimiento real.
+
+Conclusión C: la ventaja de SkipList en inserciones no compensa su desventaja en búsquedas para esta configuración (10 búsquedas por inserción). 
+Si el perfil fuera distinto (muchas más inserciones y muy pocas búsquedas), la balanza podría cambiar.
+
